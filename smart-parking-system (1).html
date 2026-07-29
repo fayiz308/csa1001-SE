@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ParkSense — Smart Parking System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FFFFFF;
+    --surface:#FFFFFF;
+    --surface-2:#F4F6F8;
+    --line:#E3E7EC;
+    --text:#1B1F26;
+    --muted:#6B7280;
+    --free:#1FA35E;
+    --free-dim:#BEEBD3;
+    --occupied:#E11D48;
+    --occupied-dim:#FBD0DA;
+    --amber:#B9770E;
+    --blue:#3D6FD6;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 15% 0%, rgba(61,111,214,0.05), transparent 45%),
+      radial-gradient(circle at 85% 10%, rgba(31,163,94,0.05), transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .display{font-family:'Space Grotesk',sans-serif;}
+
+  /* ---------- NAV ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 28px;
+    background:rgba(255,255,255,0.88);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand-mark{
+    width:34px; height:34px; border-radius:8px;
+    background:linear-gradient(135deg, var(--free), var(--blue));
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; color:#0B0D10; font-family:'Space Grotesk',sans-serif;
+  }
+  .brand-name{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1.05rem; letter-spacing:0.2px;}
+  .brand-sub{font-size:0.72rem; color:var(--muted); margin-top:-2px;}
+  .status-pill{
+    display:flex; align-items:center; gap:8px;
+    padding:7px 12px; border-radius:20px;
+    background:var(--surface); border:1px solid var(--line);
+    font-size:0.78rem; color:var(--muted);
+  }
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--free); box-shadow:0 0 8px var(--free);}
+  .dot.pulse{animation:blink 1.6s infinite;}
+  @keyframes blink{0%,100%{opacity:1;} 50%{opacity:0.25;}}
+
+  main{max-width:1180px; margin:0 auto; padding:28px 20px 80px;}
+
+  /* ---------- STATS BOARD (signature) ---------- */
+  .board{
+    background:linear-gradient(180deg, var(--surface), var(--surface-2));
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:22px 24px;
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:0;
+    position:relative;
+    overflow:hidden;
+    margin-bottom:28px;
+    box-shadow:0 1px 3px rgba(16,24,40,0.04);
+  }
+  .board::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:repeating-linear-gradient(90deg, rgba(16,24,40,0.02) 0 1px, transparent 1px 40px);
+    pointer-events:none;
+  }
+  .board-cell{
+    padding:6px 22px;
+    border-right:1px solid var(--line);
+  }
+  .board-cell:last-child{border-right:none;}
+  .board-label{
+    font-size:0.68rem; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted); margin-bottom:8px;
+  }
+  .board-value{
+    font-family:'IBM Plex Mono',monospace; font-size:2.1rem; font-weight:600;
+  }
+  .board-value.free-c{color:var(--free);}
+  .board-value.occ-c{color:var(--occupied);}
+  .board-value.tot-c{color:var(--text);}
+  .board-value.rate-c{color:var(--amber);}
+  .board-sub{font-size:0.72rem; color:var(--muted); margin-top:4px;}
+
+  @media (max-width:760px){
+    .board{grid-template-columns:1fr 1fr;}
+    .board-cell{border-right:none; border-bottom:1px solid var(--line); padding:14px 16px;}
+  }
+
+  /* ---------- LAYOUT ---------- */
+  .grid-wrap{
+    display:grid;
+    grid-template-columns:1fr 320px;
+    gap:22px;
+    align-items:start;
+  }
+  @media (max-width:900px){ .grid-wrap{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:20px;
+    box-shadow:0 1px 3px rgba(16,24,40,0.04);
+  }
+  .panel-title{
+    font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1rem;
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:16px;
+  }
+  .legend{display:flex; gap:14px; font-size:0.75rem; color:var(--muted);}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .swatch{width:10px; height:10px; border-radius:3px; display:inline-block;}
+
+  /* ---------- ZONES / SPOTS ---------- */
+  .zone{margin-bottom:22px;}
+  .zone:last-child{margin-bottom:0;}
+  .zone-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .zone-name{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.88rem;}
+  .zone-rate{font-size:0.72rem; color:var(--amber); font-family:'IBM Plex Mono',monospace;}
+  .spots{
+    display:grid;
+    grid-template-columns:repeat(10, 1fr);
+    gap:8px;
+  }
+  @media (max-width:640px){ .spots{grid-template-columns:repeat(5, 1fr);} }
+
+  .spot{
+    aspect-ratio:1/1.1;
+    border-radius:7px;
+    border:1px solid var(--line);
+    background:var(--surface-2);
+    cursor:pointer;
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .spot:hover{transform:translateY(-2px);}
+  .spot .id{
+    position:absolute; top:3px; left:5px;
+    font-size:0.55rem; color:var(--muted); font-family:'IBM Plex Mono',monospace;
+  }
+  .spot svg{width:52%; height:52%;}
+  .spot.free{ background:rgba(61,220,132,0.08); border-color:var(--free-dim); }
+  .spot.free svg{ fill:none; stroke:var(--free); }
+  .spot.occupied{ background:rgba(255,84,112,0.10); border-color:var(--occupied-dim); }
+  .spot.occupied svg{ fill:var(--occupied); }
+  .spot.just-changed{ box-shadow:0 0 0 2px var(--amber); animation:ring 1s ease-out; }
+  @keyframes ring{
+    0%{ box-shadow:0 0 0 0 rgba(255,200,87,0.6); }
+    100%{ box-shadow:0 0 0 6px rgba(255,200,87,0); }
+  }
+
+  /* ---------- SIDEBAR ---------- */
+  .rate-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 0; border-bottom:1px solid var(--line);
+    font-size:0.85rem;
+  }
+  .rate-row:last-child{border-bottom:none;}
+  .rate-row .name{color:var(--text);}
+  .rate-row .price{font-family:'IBM Plex Mono',monospace; color:var(--amber);}
+
+  .session-empty{
+    text-align:center; color:var(--muted); font-size:0.85rem;
+    padding:26px 10px;
+    border:1px dashed var(--line); border-radius:10px;
+  }
+  .session-card{
+    background:var(--surface-2); border:1px solid var(--line); border-radius:10px;
+    padding:14px;
+  }
+  .session-row{display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:8px; color:var(--muted);}
+  .session-row b{color:var(--text); font-family:'IBM Plex Mono',monospace; font-weight:500;}
+  .session-timer{
+    font-family:'IBM Plex Mono',monospace; font-size:1.6rem; text-align:center;
+    margin:10px 0; color:var(--amber);
+  }
+  .session-cost{
+    text-align:center; font-family:'IBM Plex Mono',monospace; font-size:1.1rem; color:var(--free); margin-bottom:12px;
+  }
+  .btn{
+    width:100%; padding:11px; border-radius:8px; border:none;
+    font-family:'Inter',sans-serif; font-weight:600; font-size:0.88rem;
+    cursor:pointer; transition:opacity 0.15s ease;
+  }
+  .btn:hover{opacity:0.88;}
+  .btn-primary{ background:var(--free); color:#0B0D10; }
+  .btn-danger{ background:var(--occupied); color:#fff; }
+  .btn-ghost{ background:transparent; border:1px solid var(--line); color:var(--text); }
+
+  footer{
+    text-align:center; padding:26px 20px 40px;
+    color:var(--muted); font-size:0.76rem;
+  }
+  footer .sync{font-family:'IBM Plex Mono',monospace; color:var(--muted);}
+
+  /* ---------- MODAL ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,12,15,0.72);
+    display:none; align-items:center; justify-content:center; z-index:100;
+    padding:20px;
+  }
+  .overlay.open{display:flex;}
+  .modal{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    width:100%; max-width:380px; padding:22px;
+    box-shadow:0 12px 32px rgba(16,24,40,0.16);
+  }
+  .modal h3{margin:0 0 4px; font-family:'Space Grotesk',sans-serif; font-size:1.1rem;}
+  .modal .sub{color:var(--muted); font-size:0.8rem; margin-bottom:16px;}
+  .field-row{display:flex; justify-content:space-between; font-size:0.85rem; padding:8px 0; border-bottom:1px solid var(--line);}
+  .field-row b{font-family:'IBM Plex Mono',monospace; font-weight:500;}
+  .pay-methods{display:flex; gap:8px; margin:16px 0;}
+  .pay-methods button{
+    flex:1; padding:10px 4px; border-radius:8px; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--muted); font-size:0.76rem; cursor:pointer;
+  }
+  .pay-methods button.active{ border-color:var(--free); color:var(--free); background:rgba(61,220,132,0.08); }
+  .modal-actions{display:flex; gap:10px; margin-top:14px;}
+  .modal-actions .btn{flex:1;}
+  .close-x{
+    position:absolute; top:14px; right:16px; background:none; border:none;
+    color:var(--muted); font-size:1.2rem; cursor:pointer;
+  }
+  .modal-wrap{position:relative;}
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--surface-2); border:1px solid var(--free-dim); color:var(--free);
+    padding:12px 20px; border-radius:10px; font-size:0.85rem; font-family:'IBM Plex Mono',monospace;
+    opacity:0; transition:all 0.25s ease; z-index:200; pointer-events:none;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">P</div>
+    <div>
+      <div class="brand-name">ParkSense</div>
+      <div class="brand-sub mono">sensor-linked parking network</div>
+    </div>
+  </div>
+  <div class="status-pill">
+    <span class="dot pulse" id="syncDot"></span>
+    <span id="syncText" class="mono">cloud synced · just now</span>
+  </div>
+</header>
+
+<main>
+
+  <section class="board">
+    <div class="board-cell">
+      <div class="board-label">Total Spaces</div>
+      <div class="board-value tot-c" id="statTotal">--</div>
+      <div class="board-sub">across 4 zones</div>
+    </div>
+    <div class="board-cell">
+      <div class="board-label">Free Now</div>
+      <div class="board-value free-c" id="statFree">--</div>
+      <div class="board-sub" id="statFreePct">--% available</div>
+    </div>
+    <div class="board-cell">
+      <div class="board-label">Occupied</div>
+      <div class="board-value occ-c" id="statOcc">--</div>
+      <div class="board-sub" id="statOccPct">--% in use</div>
+    </div>
+    <div class="board-cell">
+      <div class="board-label">Base Rate</div>
+      <div class="board-value rate-c">₹30<span style="font-size:1rem;">/hr</span></div>
+      <div class="board-sub">zone pricing varies</div>
+    </div>
+  </section>
+
+  <div class="grid-wrap">
+
+    <div class="panel">
+      <div class="panel-title">
+        <span>Live Parking Map</span>
+        <span class="legend">
+          <span><span class="swatch" style="background:var(--free);"></span>Free</span>
+          <span><span class="swatch" style="background:var(--occupied);"></span>Occupied</span>
+        </span>
+      </div>
+      <div id="zones"></div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:22px;">
+
+      <div class="panel">
+        <div class="panel-title"><span>Pricing</span></div>
+        <div id="rateList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title"><span>Your Session</span></div>
+        <div id="sessionArea">
+          <div class="session-empty">No active session.<br>Tap a spot on the map to book or pay.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <div>ParkSense demo interface — sensor feed simulated client-side for this preview.</div>
+  <div class="sync" id="footerSync">last cloud sync: --</div>
+</footer>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal modal-wrap" id="modalBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- CONFIG ---------------- */
+const ZONES = [
+  { id:'A', name:'Zone A · Entrance', rate:40, count:10 },
+  { id:'B', name:'Zone B · Main Deck', rate:30, count:10 },
+  { id:'C', name:'Zone C · North Wing', rate:25, count:10 },
+  { id:'D', name:'Zone D · Overflow', rate:15, count:10 },
+];
+const PAYMENT_METHODS = ['Card', 'UPI', 'Wallet'];
+
+/* ---------------- "CLOUD" STATE (in-memory) ---------------- */
+let spots = [];
+ZONES.forEach(zone=>{
+  for(let i=1;i<=zone.count;i++){
+    spots.push({
+      spotId: zone.id + i.toString().padStart(2,'0'),
+      zone: zone.id,
+      rate: zone.rate,
+      occupied: Math.random() < 0.55,
+      enteredAt: null,
+      lastChanged: 0,
+    });
+  }
+});
+// backfill entry times for spots that start occupied
+spots.forEach(s=>{
+  if(s.occupied){
+    s.enteredAt = Date.now() - Math.floor(Math.random()*90*60*1000); // up to 90 min ago
+  }
+});
+
+let mySession = null; // { spotId }
+let activePayMethod = 'Card';
+
+/* ---------------- RENDER ---------------- */
+const zonesEl = document.getElementById('zones');
+const rateListEl = document.getElementById('rateList');
+const sessionArea = document.getElementById('sessionArea');
+
+function carIcon(){
+  return `<svg viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11m-14 0h14m-14 0a1.5 1.5 0 0 0-1.5 1.5V16A1 1 0 0 0 4.5 17H6a1 1 0 0 0 1-1v-1h10v1a1 1 0 0 0 1 1h1.5a1 1 0 0 0 1-1v-3.5A1.5 1.5 0 0 0 19 11"/><circle cx="7.5" cy="15" r="1.1"/><circle cx="16.5" cy="15" r="1.1"/></svg>`;
+}
+
+function renderRates(){
+  rateListEl.innerHTML = ZONES.map(z=>`
+    <div class="rate-row">
+      <span class="name">${z.name}</span>
+      <span class="price">₹${z.rate}/hr</span>
+    </div>
+  `).join('') + `
+    <div class="rate-row">
+      <span class="name" style="color:var(--muted);">First 15 min</span>
+      <span class="price" style="color:var(--free);">Free</span>
+    </div>
+  `;
+}
+
+function renderZones(){
+  zonesEl.innerHTML = ZONES.map(zone=>{
+    const zoneSpots = spots.filter(s=>s.zone===zone.id);
+    return `
+      <div class="zone">
+        <div class="zone-head">
+          <span class="zone-name">${zone.name}</span>
+          <span class="zone-rate">₹${zone.rate}/hr</span>
+        </div>
+        <div class="spots">
+          ${zoneSpots.map(s=>`
+            <div class="spot ${s.occupied?'occupied':'free'} ${Date.now()-s.lastChanged < 1000 ? 'just-changed':''}" data-id="${s.spotId}">
+              <span class="id">${s.spotId}</span>
+              ${carIcon()}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  zonesEl.querySelectorAll('.spot').forEach(el=>{
+    el.addEventListener('click', ()=> openSpotModal(el.dataset.id));
+  });
+}
+
+function renderStats(){
+  const total = spots.length;
+  const occ = spots.filter(s=>s.occupied).length;
+  const free = total - occ;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statFree').textContent = free;
+  document.getElementById('statOcc').textContent = occ;
+  document.getElementById('statFreePct').textContent = Math.round((free/total)*100) + '% available';
+  document.getElementById('statOccPct').textContent = Math.round((occ/total)*100) + '% in use';
+}
+
+function fmtElapsed(ms){
+  const totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600);
+  const m = Math.floor((totalSec%3600)/60);
+  const s = totalSec%60;
+  return (h>0? h+':' : '') + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function computeCost(spot){
+  const elapsedMin = (Date.now() - spot.enteredAt) / 60000;
+  if(elapsedMin <= 15) return 0;
+  const hrs = Math.ceil((elapsedMin - 15) / 60) + (elapsedMin > 15 && elapsedMin <=75 ? 0 : 0);
+  // simpler: bill per started hour after free 15 min
+  const billableMin = elapsedMin - 15;
+  const billableHrs = Math.ceil(billableMin / 60);
+  return billableHrs * spot.rate;
+}
+
+function renderSession(){
+  if(!mySession){
+    sessionArea.innerHTML = `<div class="session-empty">No active session.<br>Tap a spot on the map to book or pay.</div>`;
+    return;
+  }
+  const spot = spots.find(s=>s.spotId===mySession.spotId);
+  if(!spot || !spot.occupied){
+    mySession = null;
+    return renderSession();
+  }
+  const elapsed = Date.now() - spot.enteredAt;
+  const cost = computeCost(spot);
+  sessionArea.innerHTML = `
+    <div class="session-card">
+      <div class="session-row"><span>Spot</span><b>${spot.spotId}</b></div>
+      <div class="session-row"><span>Zone rate</span><b>₹${spot.rate}/hr</b></div>
+      <div class="session-timer mono">${fmtElapsed(elapsed)}</div>
+      <div class="session-cost">₹${cost} due</div>
+      <button class="btn btn-primary" id="payBtn">Pay &amp; Exit</button>
+    </div>
+  `;
+  document.getElementById('payBtn').addEventListener('click', ()=> openPayModal(spot.spotId));
+}
+
+/* ---------------- MODALS ---------------- */
+const overlay = document.getElementById('overlay');
+const modalBody = document.getElementById('modalBody');
+
+function closeModal(){ overlay.classList.remove('open'); modalBody.innerHTML=''; }
+overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
+
+function openSpotModal(spotId){
+  const spot = spots.find(s=>s.spotId===spotId);
+  if(!spot.occupied){
+    openBookModal(spotId);
+  } else if(mySession && mySession.spotId===spotId){
+    openPayModal(spotId);
+  } else {
+    modalBody.innerHTML = `
+      <button class="close-x" onclick="closeModal()">×</button>
+      <h3>${spot.spotId} — Occupied</h3>
+      <div class="sub">This space is currently in use by another vehicle.</div>
+      <div class="field-row"><span>Zone</span><b>${spot.zone}</b></div>
+      <div class="field-row"><span>Rate</span><b>₹${spot.rate}/hr</b></div>
+      <div class="field-row"><span>Occupied for</span><b>${fmtElapsed(Date.now()-spot.enteredAt)}</b></div>
+    `;
+    overlay.classList.add('open');
+  }
+}
+
+function openBookModal(spotId){
+  const spot = spots.find(s=>s.spotId===spotId);
+  modalBody.innerHTML = `
+    <button class="close-x" onclick="closeModal()">×</button>
+    <h3>Book ${spot.spotId}</h3>
+    <div class="sub">Zone ${spot.zone} · ₹${spot.rate}/hr · first 15 min free</div>
+    <div class="field-row"><span>Status</span><b style="color:var(--free);">Free</b></div>
+    <div class="field-row"><span>Billing starts</span><b>on entry</b></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="confirmBook">Book this spot</button>
+    </div>
+  `;
+  overlay.classList.add('open');
+  document.getElementById('confirmBook').addEventListener('click', ()=>{
+    spot.occupied = true;
+    spot.enteredAt = Date.now();
+    spot.lastChanged = Date.now();
+    mySession = { spotId: spot.spotId };
+    closeModal();
+    renderZones(); renderStats(); renderSession();
+    showToast(`Booked ${spot.spotId} — timer started`);
+  });
+}
+
+function openPayModal(spotId){
+  const spot = spots.find(s=>s.spotId===spotId);
+  const cost = computeCost(spot);
+  activePayMethod = 'Card';
+  modalBody.innerHTML = `
+    <button class="close-x" onclick="closeModal()">×</button>
+    <h3>Pay &amp; Exit — ${spot.spotId}</h3>
+    <div class="sub">Duration ${fmtElapsed(Date.now()-spot.enteredAt)} · Zone ${spot.zone}</div>
+    <div class="field-row"><span>Rate</span><b>₹${spot.rate}/hr</b></div>
+    <div class="field-row"><span>Free allowance</span><b>15 min</b></div>
+    <div class="field-row"><span>Amount due</span><b style="color:var(--free);">₹${cost}</b></div>
+    <div class="pay-methods" id="payMethods">
+      ${PAYMENT_METHODS.map((m,i)=>`<button data-m="${m}" class="${i===0?'active':''}">${m}</button>`).join('')}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirmPay">Confirm Payment</button>
+    </div>
+  `;
+  overlay.classList.add('open');
+  document.querySelectorAll('#payMethods button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      document.querySelectorAll('#payMethods button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      activePayMethod = b.dataset.m;
+    });
+  });
+  document.getElementById('confirmPay').addEventListener('click', ()=>{
+    spot.occupied = false;
+    spot.enteredAt = null;
+    spot.lastChanged = Date.now();
+    if(mySession && mySession.spotId===spot.spotId) mySession = null;
+    closeModal();
+    renderZones(); renderStats(); renderSession();
+    showToast(`₹${cost} paid via ${activePayMethod} — spot ${spot.spotId} freed`);
+  });
+}
+
+/* ---------------- TOAST ---------------- */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2600);
+}
+
+/* ---------------- SENSOR SIMULATION ---------------- */
+function simulateSensors(){
+  // randomly flip 0-2 spots not currently claimed by the user's own session
+  const flips = Math.random() < 0.6 ? 1 : (Math.random() < 0.3 ? 2 : 0);
+  for(let i=0;i<flips;i++){
+    const candidates = spots.filter(s => !(mySession && s.spotId===mySession.spotId));
+    if(!candidates.length) continue;
+    const s = candidates[Math.floor(Math.random()*candidates.length)];
+    s.occupied = !s.occupied;
+    s.enteredAt = s.occupied ? Date.now() : null;
+    s.lastChanged = Date.now();
+  }
+  renderZones();
+  renderStats();
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString();
+  document.getElementById('syncText').textContent = 'cloud synced · ' + timeStr;
+  document.getElementById('footerSync').textContent = 'last cloud sync: ' + timeStr;
+}
+
+/* ---------------- INIT ---------------- */
+renderRates();
+renderZones();
+renderStats();
+renderSession();
+simulateSensors();
+
+setInterval(simulateSensors, 5000);
+setInterval(renderSession, 1000);
+</script>
+
+</body>
+</html>
